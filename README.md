@@ -28,7 +28,7 @@
 [![License](https://img.shields.io/badge/license-MIT-22C55E?style=flat-square)](./LICENSE)
  
 </div>
----
+----
  
 ## ⚡ The Pitch
  
