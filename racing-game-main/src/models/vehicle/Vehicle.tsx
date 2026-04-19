@@ -6,7 +6,7 @@ import type { ContactForcePayload, RapierRigidBody } from '@react-three/rapier'
 import type { Group } from 'three'
 import type { PropsWithChildren } from 'react'
 
-import { Boost, BoostAudio, BrakeAudio, Dust, HonkAudio, Skid } from '../../effects'
+import { AccelerateAudio, Boost, BoostAudio, BrakeAudio, Dust, EngineAudio, HonkAudio, Skid } from '../../effects'
 import { Cameras } from '../../effects/Cameras'
 import {
   COLLISION_GROUP_CHASSIS,
@@ -287,6 +287,8 @@ export function Vehicle({
         <group ref={chassisBody}>
           <group ref={visualRoot}>
             <Chassis>
+              <EngineAudio />
+              <AccelerateAudio />
               <BoostAudio />
               <BrakeAudio />
               <HonkAudio />

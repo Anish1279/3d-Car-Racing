@@ -58,8 +58,8 @@ export function App(): JSX.Element {
           <Ramp args={[30, 6, 8]} position={[2, -1, 168.55]} rotation={[0, 0.49, Math.PI / 15]} />
 
           {/* Race triggers */}
-          <Goal args={[0.001, 10, 18]} onEnter={completeLap} rotation={[...FINISH_LINE_ROTATION]} position={[...FINISH_LINE_POSITION]} />
-          <Goal args={[0.001, 10, 18]} onEnter={hitCheckpoint} rotation={[...CHECKPOINT_ROTATION]} position={[...CHECKPOINT_POSITION]} />
+          <Goal onEnter={completeLap} rotation={[...FINISH_LINE_ROTATION]} position={[...FINISH_LINE_POSITION]} />
+          <Goal onEnter={hitCheckpoint} rotation={[...CHECKPOINT_ROTATION]} position={[...CHECKPOINT_POSITION]} />
 
           <BoundingBox depth={512} height={100} position={[0, 40, 0]} width={512} />
 

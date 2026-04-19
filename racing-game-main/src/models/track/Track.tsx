@@ -1,11 +1,11 @@
 import { DoubleSide } from 'three'
-import { useLayoutEffect, useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { MeshDistortMaterial, PositionalAudio, useGLTF } from '@react-three/drei'
+import { MeshDistortMaterial, useGLTF, PositionalAudio } from '@react-three/drei'
 import { RigidBody, MeshCollider, interactionGroups } from '@react-three/rapier'
 
 import type { GLTF } from 'three-stdlib'
-import type { Group, Mesh, MeshStandardMaterial } from 'three'
+import type { Group, Mesh, MeshStandardMaterial, PositionalAudio as PositionalAudioImpl } from 'three'
 
 import { useStore } from '../../store'
 import { COLLISION_GROUP_CHASSIS, COLLISION_GROUP_ENVIRONMENT } from '../../physics/constants'
@@ -32,10 +32,36 @@ export function Track(): JSX.Element {
   const level = useStore((state) => state.level)
   const sound = useStore((s) => s.sound)
   const ready = useStore((s) => s.ready)
+  const raceState = useStore((s) => s.raceState)
   const { nodes: n, materials: m } = useGLTF('/models/track-draco.glb') as unknown as TrackGLTF
   const config = { receiveShadow: true, castShadow: true, 'material-roughness': 1 }
   const birds = useRef<Group>(null!)
   const clouds = useRef<Group>(null!)
+  const waterAudioRef = useRef<PositionalAudioImpl>(null)
+
+  // Only play water audio when the race is active (countdown or racing)
+  const shouldPlayAudio = ready && sound && (raceState === 'countdown' || raceState === 'racing')
+
+  useEffect(() => {
+    const audio = waterAudioRef.current
+    if (!audio) return
+
+    if (shouldPlayAudio) {
+      const tryPlay = () => {
+        if (audio.buffer && !audio.isPlaying) {
+          audio.setVolume(0.5)
+          audio.setRolloffFactor(2)
+          audio.play()
+        } else if (!audio.buffer) {
+          setTimeout(tryPlay, 200)
+        }
+      }
+      tryPlay()
+    } else {
+      if (audio.isPlaying) audio.stop()
+    }
+    return () => { if (audio?.isPlaying) audio.stop() }
+  }, [shouldPlayAudio])
 
   useFrame((_, delta) => {
     if (birds.current) {
@@ -66,12 +92,11 @@ export function Track(): JSX.Element {
         <MeshCollider type="trimesh">
           <mesh geometry={n.terrain.geometry} material={n.terrain.material} {...config} />
         </MeshCollider>
-        <MeshCollider type="trimesh">
-          <mesh geometry={n.mountains.geometry} material={n.mountains.material} {...config} />
-        </MeshCollider>
       </RigidBody>
 
       {/* Non-colliding visuals */}
+      {/* Keep the canyon walls visual-only so the tunnel opening stays driveable. */}
+      <mesh geometry={n.mountains.geometry} material={n.mountains.material} {...config} />
       {/* Keep the decorative strip visual-only so its thin edge detail cannot snag the chassis. */}
       <mesh geometry={n.track_2.geometry} material={m['Material.001']} {...config} />
       <mesh geometry={n.tube.geometry} material={m['default']} {...config} />
@@ -86,7 +111,7 @@ export function Track(): JSX.Element {
       {/* Water */}
       <mesh geometry={n.water.geometry}>
         <MeshDistortMaterial speed={4} map={m.ColorPaletteWater.map} roughness={0} side={DoubleSide} />
-        {ready && sound && <PositionalAudio url="/sounds/water.mp3" loop autoplay distance={10} />}
+        <PositionalAudio ref={waterAudioRef} url="/sounds/water.mp3" loop distance={3} />
       </mesh>
 
       {/* Birds */}
@@ -121,3 +146,4 @@ export function Track(): JSX.Element {
     </group>
   )
 }
+

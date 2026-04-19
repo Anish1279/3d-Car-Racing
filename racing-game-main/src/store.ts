@@ -205,13 +205,21 @@ export const getElapsedRaceTime = (state: Pick<IState, 'raceStartTime' | 'penalt
 }
 
 const computeFinalScore = (state: Pick<IState, 'lapTimes' | 'hasPassedCheckpoint' | 'recoveryCount'>, finalTimeMs: number, didFinish: boolean) => {
-  const progressScore = state.lapTimes.length * 1500 + (state.hasPassedCheckpoint ? 600 : 0)
+  // Base score — everyone gets something for participating
+  const baseScore = 1000
+  // Survival time bonus — reward for staying alive
+  const survivalBonus = Math.floor(finalTimeMs / 1000) * 25
+  // Lap completion bonuses
+  const lapScore = state.lapTimes.length * 1500
+  // Checkpoint bonus
+  const checkpointBonus = state.hasPassedCheckpoint ? 600 : 0
+  // Finish bonus
   const finishBonus = didFinish ? 3000 : 0
-  const timePenalty = Math.floor(finalTimeMs / 1000) * 12
+  // Penalties
   const recoveryPenalty = state.recoveryCount * 350
-  const crashPenalty = didFinish ? 0 : 750
+  const crashPenalty = didFinish ? 0 : 500
 
-  return Math.max(0, progressScore + finishBonus - timePenalty - recoveryPenalty - crashPenalty)
+  return Math.max(100, baseScore + survivalBonus + lapScore + checkpointBonus + finishBonus - recoveryPenalty - crashPenalty)
 }
 
 export const useStore = create<IState>((set, get) => ({
@@ -321,7 +329,9 @@ export const useStore = create<IState>((set, get) => ({
 
     completeLap: () => {
       const state = get()
+      console.log('[RACE] completeLap called — raceState:', state.raceState, 'hasPassedCheckpoint:', state.hasPassedCheckpoint)
       if (state.raceState !== 'racing' || !state.hasPassedCheckpoint) return
+      console.log('[RACE] ✅ LAP COMPLETED! Lap', state.currentLap)
 
       const now = Date.now()
       const elapsed = getElapsedRaceTime(state, now)
@@ -361,7 +371,9 @@ export const useStore = create<IState>((set, get) => ({
 
     hitCheckpoint: () => {
       const state = get()
+      console.log('[RACE] hitCheckpoint called — raceState:', state.raceState, 'hasPassedCheckpoint:', state.hasPassedCheckpoint)
       if (state.raceState !== 'racing' || state.hasPassedCheckpoint) return
+      console.log('[RACE] ✅ CHECKPOINT HIT!')
 
       const checkpointTime = getElapsedRaceTime(state)
       const bestCp = state.bestCheckpointTime
