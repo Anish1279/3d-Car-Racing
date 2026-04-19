@@ -1,4 +1,4 @@
-import { DoubleSide } from 'three'
+import { DoubleSide, Vector3 } from 'three'
 import { useRef, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { MeshDistortMaterial, useGLTF, PositionalAudio } from '@react-three/drei'
@@ -28,6 +28,16 @@ interface TrackGLTF extends GLTF {
   }
 }
 
+// Water areas on the track — the car hears water when near these zones
+const WATER_ZONES: [number, number, number][] = [
+  [-80, 0, -25],   // river/bridge area
+  [-125, 0, -90],  // second water crossing
+]
+const WATER_AUDIBLE_RANGE = 40   // start hearing water within this distance
+const WATER_FULL_VOLUME_RANGE = 8 // full volume within this distance
+
+const _camPos = new Vector3()
+
 export function Track(): JSX.Element {
   const level = useStore((state) => state.level)
   const sound = useStore((s) => s.sound)
@@ -38,20 +48,21 @@ export function Track(): JSX.Element {
   const birds = useRef<Group>(null!)
   const clouds = useRef<Group>(null!)
   const waterAudioRef = useRef<PositionalAudioImpl>(null)
+  const waterStarted = useRef(false)
 
-  // Only play water audio when the race is active (countdown or racing)
-  const shouldPlayAudio = ready && sound && (raceState === 'countdown' || raceState === 'racing')
+  const isRacing = ready && sound && (raceState === 'countdown' || raceState === 'racing')
 
+  // Start/stop water audio based on race state
   useEffect(() => {
     const audio = waterAudioRef.current
     if (!audio) return
 
-    if (shouldPlayAudio) {
+    if (isRacing) {
       const tryPlay = () => {
         if (audio.buffer && !audio.isPlaying) {
-          audio.setVolume(0.5)
-          audio.setRolloffFactor(2)
+          audio.setVolume(0) // start silent — useFrame controls volume by proximity
           audio.play()
+          waterStarted.current = true
         } else if (!audio.buffer) {
           setTimeout(tryPlay, 200)
         }
@@ -59,20 +70,52 @@ export function Track(): JSX.Element {
       tryPlay()
     } else {
       if (audio.isPlaying) audio.stop()
+      waterStarted.current = false
     }
-    return () => { if (audio?.isPlaying) audio.stop() }
-  }, [shouldPlayAudio])
+    return () => {
+      if (audio?.isPlaying) audio.stop()
+      waterStarted.current = false
+    }
+  }, [isRacing])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
+    // Bird rotation
     if (birds.current) {
       birds.current.children.forEach((bird, index) => {
         bird.rotation.y += delta / (index + 1)
       })
     }
+    // Cloud rotation
     if (clouds.current) {
       clouds.current.children.forEach((cloud, index) => {
         cloud.rotation.y += delta / 25 / (index + 1)
       })
+    }
+
+    // --- Water volume by proximity ---
+    const audio = waterAudioRef.current
+    if (!audio || !waterStarted.current || !audio.isPlaying) return
+
+    // Get camera (listener) position
+    _camPos.copy(state.camera.position)
+
+    // Find closest water zone
+    let minDist = Infinity
+    for (const zone of WATER_ZONES) {
+      const dx = _camPos.x - zone[0]
+      const dz = _camPos.z - zone[2]
+      const dist = Math.sqrt(dx * dx + dz * dz)
+      if (dist < minDist) minDist = dist
+    }
+
+    // Map distance → volume: silent beyond WATER_AUDIBLE_RANGE, full at WATER_FULL_VOLUME_RANGE
+    if (minDist > WATER_AUDIBLE_RANGE) {
+      audio.setVolume(0)
+    } else if (minDist < WATER_FULL_VOLUME_RANGE) {
+      audio.setVolume(0.45)
+    } else {
+      const t = 1 - (minDist - WATER_FULL_VOLUME_RANGE) / (WATER_AUDIBLE_RANGE - WATER_FULL_VOLUME_RANGE)
+      audio.setVolume(t * 0.45)
     }
   })
 
@@ -111,7 +154,8 @@ export function Track(): JSX.Element {
       {/* Water */}
       <mesh geometry={n.water.geometry}>
         <MeshDistortMaterial speed={4} map={m.ColorPaletteWater.map} roughness={0} side={DoubleSide} />
-        <PositionalAudio ref={waterAudioRef} url="/sounds/water.mp3" loop distance={3} />
+        {/* Audio starts silent — volume controlled by proximity in useFrame */}
+        <PositionalAudio ref={waterAudioRef} url="/sounds/water.mp3" loop distance={1} />
       </mesh>
 
       {/* Birds */}
@@ -146,4 +190,3 @@ export function Track(): JSX.Element {
     </group>
   )
 }
-

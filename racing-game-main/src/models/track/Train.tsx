@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react'
+import { Vector3 } from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations, PositionalAudio } from '@react-three/drei'
 import { RigidBody, CuboidCollider, interactionGroups } from '@react-three/rapier'
@@ -27,6 +28,11 @@ interface TrainProps {
   rotation?: [number, number, number]
 }
 
+const TRAIN_AUDIBLE_RANGE = 60      // start hearing train within this distance
+const TRAIN_FULL_VOLUME_RANGE = 10  // full volume when very close
+const _camPos = new Vector3()
+const _trainWorldPos = new Vector3()
+
 export function Train({
   position = [-145.84, 3.42, 54.67],
   rotation = [0, -0.09, 0],
@@ -34,6 +40,7 @@ export function Train({
   const groupRef = useRef<Group>(null!)
   const rbRef = useRef<RapierRigidBody>(null)
   const trainAudioRef = useRef<PositionalAudioImpl>(null)
+  const audioStarted = useRef(false)
   const { animations, nodes: n, materials: m } = useGLTF('/models/track-draco.glb') as unknown as TrainGLTF
   const { actions } = useAnimations(animations, groupRef)
   const sound = useStore((s) => s.sound)
@@ -41,34 +48,35 @@ export function Train({
   const raceState = useStore((s) => s.raceState)
   const config = { receiveShadow: true, castShadow: true, 'material-roughness': 1 }
 
-  // Only play train audio when the race is active
-  const shouldPlayAudio = ready && sound && (raceState === 'countdown' || raceState === 'racing')
+  const isRacing = ready && sound && (raceState === 'countdown' || raceState === 'racing')
 
   useEffect(() => {
     const audio = trainAudioRef.current
     if (!audio) return
 
-    if (shouldPlayAudio) {
-      // Wait a frame for the buffer to be ready
+    if (isRacing) {
       const tryPlay = () => {
         if (audio.buffer && !audio.isPlaying) {
-          audio.setVolume(0.6)
-          audio.setRolloffFactor(2)
+          audio.setVolume(0) // start silent — useFrame controls volume by proximity
           audio.play()
+          audioStarted.current = true
         } else if (!audio.buffer) {
-          // Buffer not loaded yet, retry shortly
           setTimeout(tryPlay, 200)
         }
       }
       tryPlay()
     } else {
       if (audio.isPlaying) audio.stop()
+      audioStarted.current = false
     }
-    return () => { if (audio?.isPlaying) audio.stop() }
-  }, [shouldPlayAudio])
+    return () => {
+      if (audio?.isPlaying) audio.stop()
+      audioStarted.current = false
+    }
+  }, [isRacing])
 
-  // Play train animation
-  useFrame(() => {
+  useFrame((state) => {
+    // Play train animation
     if (actions.train && !actions.train.isRunning()) {
       actions.train.play()
     }
@@ -76,6 +84,27 @@ export function Train({
     if (rbRef.current && groupRef.current) {
       const p = groupRef.current.position
       rbRef.current.setNextKinematicTranslation({ x: p.x, y: p.y, z: p.z })
+    }
+
+    // --- Train volume by proximity ---
+    const audio = trainAudioRef.current
+    if (!audio || !audioStarted.current || !audio.isPlaying) return
+
+    // Get the train's current world position (it moves via animation)
+    if (groupRef.current) {
+      groupRef.current.getWorldPosition(_trainWorldPos)
+    }
+    _camPos.copy(state.camera.position)
+
+    const dist = _camPos.distanceTo(_trainWorldPos)
+
+    if (dist > TRAIN_AUDIBLE_RANGE) {
+      audio.setVolume(0)
+    } else if (dist < TRAIN_FULL_VOLUME_RANGE) {
+      audio.setVolume(0.5)
+    } else {
+      const t = 1 - (dist - TRAIN_FULL_VOLUME_RANGE) / (TRAIN_AUDIBLE_RANGE - TRAIN_FULL_VOLUME_RANGE)
+      audio.setVolume(t * 0.5)
     }
   })
 
@@ -91,8 +120,8 @@ export function Train({
         <mesh geometry={n.train_7.geometry} material={m.steelClone} {...config} />
         <mesh geometry={n.train_8.geometry} material={m.lightRedClone} {...config} />
         <mesh geometry={n.train_9.geometry} material={m.darkClone} {...config} />
-        {/* distance=3 → train sound only audible within ~15-20 units of the train */}
-        <PositionalAudio ref={trainAudioRef} url="/sounds/train.mp3" loop distance={3} />
+        {/* Audio starts silent — volume controlled by proximity in useFrame */}
+        <PositionalAudio ref={trainAudioRef} url="/sounds/train.mp3" loop distance={1} />
       </group>
       <RigidBody
         ref={rbRef}
