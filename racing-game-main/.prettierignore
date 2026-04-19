@@ -1,6 +1,6 @@
-assets/*
-dist/*
-node_modules/*
-public/*
-.log
-package.json
+assets
+coverage
+dist
+node_modules
+public
+package-lock.json
