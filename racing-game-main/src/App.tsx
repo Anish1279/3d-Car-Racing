@@ -3,7 +3,7 @@ import { Sky, Environment, PerspectiveCamera } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
 
 import { HideMouse, Keyboard } from './controls'
-import { BoundingBox, Ramp, Track, Vehicle, Goal, Train, Heightmap, AIVehicle } from './models'
+import { BoundingBox, Ramp, Track, Vehicle, Goal, Train, AIVehicle } from './models'
 import { useStore } from './store'
 import {
   AI_COUNT,
@@ -56,7 +56,6 @@ export function App(): JSX.Element {
           />
           <Train />
           <Ramp args={[30, 6, 8]} position={[2, -1, 168.55]} rotation={[0, 0.49, Math.PI / 15]} />
-          <Heightmap elementSize={0.5085} position={[327 - 66.5, -3.3, -473 + 213]} rotation={[-Math.PI / 2, 0, -Math.PI]} />
 
           {/* Race triggers */}
           <Goal args={[0.001, 10, 18]} onEnter={completeLap} rotation={[...FINISH_LINE_ROTATION]} position={[...FINISH_LINE_POSITION]} />

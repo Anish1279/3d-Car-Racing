@@ -49,13 +49,19 @@ const _worldUp = new Vector3(0, 1, 0)
 const IMPACT_FORCE_GAME_OVER = 65000
 const IMPACT_SPEED_GAME_OVER = 42
 const IMPACT_GRACE_PERIOD = 1.25
-const OFF_TRACK_DISTANCE = 18
 const SAFE_TRACK_DISTANCE = 12
-const OFF_TRACK_RECOVERY_DELAY = 1
-const STUCK_RECOVERY_DELAY = 1.5
 const FLIP_GAME_OVER_DELAY = 2.25
 const RESPAWN_BACK_OFFSET = 5
-const RESPAWN_TIME_PENALTY_MS = 3000
+const STUCK_SAMPLE_INTERVAL_MS = 250
+const STUCK_RESTART_DELAY_MS = 20000
+const STUCK_RADIUS = 4
+const STUCK_RADIUS_SQ = STUCK_RADIUS * STUCK_RADIUS
+
+interface PositionSample {
+  time: number
+  x: number
+  z: number
+}
 
 interface VehicleProps {
   position?: [number, number, number]
@@ -70,27 +76,35 @@ export function Vehicle({
   const chassisRigidBody = useRef<RapierRigidBody>(null)
   const chassisBody = useStore((s) => s.chassisBody)
   const wheels = useStore((s) => s.wheels)
-  const controls = useStore((s) => s.controls)
   const raceState = useStore((s) => s.raceState)
+  const paused = useStore((s) => s.paused)
   const respawnNonce = useStore((s) => s.respawnNonce)
   const respawnPosition = useStore((s) => s.respawnPosition)
   const respawnRotation = useStore((s) => s.respawnRotation)
-  const { gameOver, queueRespawn } = useStore((s) => s.actions)
+  const { gameOver, reset } = useStore((s) => s.actions)
   const visualRoot = useRef<Group>(null)
 
   const appliedRespawnNonce = useRef(-1)
   const impactCooldown = useRef(IMPACT_GRACE_PERIOD)
-  const offTrackTimer = useRef(0)
-  const stuckTimer = useRef(0)
   const flipTimer = useRef(0)
   const lastSafePosition = useRef(new Vector3(...SPAWN_POSITION))
   const lastSafeRotationY = useRef(SPAWN_ROTATION[1])
-  const lastFramePosition = useRef(new Vector3(...SPAWN_POSITION))
-  const hasLastFramePosition = useRef(false)
   const settledRaceState = useRef<string>('')
   const closestTrackSample = useRef(createTrackSample())
+  const stuckSamples = useRef<PositionSample[]>([])
+  const lastStuckSampleAt = useRef(0)
 
   useVehiclePhysics(chassisRigidBody)
+
+  const seedStuckWatchdog = (x: number, z: number, time = Date.now()) => {
+    stuckSamples.current = [{ time, x, z }]
+    lastStuckSampleAt.current = time
+  }
+
+  const resetStuckWatchdog = () => {
+    stuckSamples.current = []
+    lastStuckSampleAt.current = 0
+  }
 
   const applyRespawn = (nextPosition: [number, number, number], nextRotation: [number, number, number]) => {
     const rb = chassisRigidBody.current
@@ -106,13 +120,10 @@ export function Vehicle({
 
     lastSafePosition.current.set(nextPosition[0], nextPosition[1], nextPosition[2])
     lastSafeRotationY.current = nextRotation[1]
-    lastFramePosition.current.set(nextPosition[0], nextPosition[1], nextPosition[2])
-    hasLastFramePosition.current = true
-    offTrackTimer.current = 0
-    stuckTimer.current = 0
     flipTimer.current = 0
     impactCooldown.current = IMPACT_GRACE_PERIOD
     settledRaceState.current = ''
+    seedStuckWatchdog(nextPosition[0], nextPosition[2])
   }
 
   const freezeVehicle = () => {
@@ -149,6 +160,7 @@ export function Vehicle({
       if (settledRaceState.current !== raceState) {
         freezeVehicle()
         settledRaceState.current = raceState
+        resetStuckWatchdog()
       }
       return
     }
@@ -193,20 +205,18 @@ export function Vehicle({
       lastSafeRotationY.current = closestTrackSample.current.yaw
     }
 
-    if (!hasLastFramePosition.current) {
-      lastFramePosition.current.copy(_bodyPos)
-      hasLastFramePosition.current = true
+    if (raceState !== 'racing') {
+      resetStuckWatchdog()
+      return
     }
 
-    const planarTravel = Math.hypot(
-      _bodyPos.x - lastFramePosition.current.x,
-      _bodyPos.z - lastFramePosition.current.z,
-    )
-    lastFramePosition.current.copy(_bodyPos)
-
-    if (raceState !== 'racing') return
+    if (paused) {
+      resetStuckWatchdog()
+      return
+    }
 
     if (_bodyPos.y < -12) {
+      resetStuckWatchdog()
       gameOver('Fell off the course')
       return
     }
@@ -218,29 +228,36 @@ export function Vehicle({
     }
 
     if (flipTimer.current >= FLIP_GAME_OVER_DELAY) {
+      resetStuckWatchdog()
       gameOver('Vehicle flipped')
       return
     }
 
-    if (closestTrackSample.current.distance >= OFF_TRACK_DISTANCE) {
-      offTrackTimer.current += dt
-    } else {
-      offTrackTimer.current = 0
+    const now = Date.now()
+    if (stuckSamples.current.length === 0) {
+      seedStuckWatchdog(_bodyPos.x, _bodyPos.z, now)
     }
 
-    const tryingToDrive = controls.forward || controls.backward
-    if (tryingToDrive && groundedWheels >= 2 && mutation.speed < 2 && planarTravel < 0.05) {
-      stuckTimer.current += dt
-    } else {
-      stuckTimer.current = 0
+    const movedOutsideWatchdog = stuckSamples.current.some((sample) => {
+      const dx = _bodyPos.x - sample.x
+      const dz = _bodyPos.z - sample.z
+      return (dx * dx + dz * dz) > STUCK_RADIUS_SQ
+    })
+
+    if (movedOutsideWatchdog) {
+      seedStuckWatchdog(_bodyPos.x, _bodyPos.z, now)
+      return
     }
 
-    if (offTrackTimer.current >= OFF_TRACK_RECOVERY_DELAY || stuckTimer.current >= STUCK_RECOVERY_DELAY) {
-      queueRespawn(
-        [lastSafePosition.current.x, lastSafePosition.current.y, lastSafePosition.current.z],
-        [0, lastSafeRotationY.current, 0],
-        RESPAWN_TIME_PENALTY_MS,
-      )
+    if ((now - lastStuckSampleAt.current) >= STUCK_SAMPLE_INTERVAL_MS) {
+      stuckSamples.current.push({ time: now, x: _bodyPos.x, z: _bodyPos.z })
+      lastStuckSampleAt.current = now
+    }
+
+    const oldestSample = stuckSamples.current[0]
+    if (oldestSample && (now - oldestSample.time) >= STUCK_RESTART_DELAY_MS) {
+      resetStuckWatchdog()
+      reset()
       return
     }
   })

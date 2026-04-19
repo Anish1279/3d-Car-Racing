@@ -81,9 +81,12 @@ export function useVehiclePhysics(chassisRef: React.RefObject<RapierRigidBody>) 
 
     // ── Steering ──
     const speedRatio = Math.min(speed / cfg.maxSpeed, 1)
+    const lowSpeedAssist = 1 - Math.min(speed / cfg.lowSpeedSteerAssistCutoff, 1)
+    const steerAssist = 1 + lowSpeedAssist * (cfg.lowSpeedSteerAngleBoost - 1)
     const steerReduction = 1 - Math.pow(speedRatio, 0.5) * cfg.speedSteerReduction
-    const targetSteer = input.steerInput * cfg.maxSteerAngle * steerReduction
-    const steerRate = Math.abs(input.steerInput) > 0.01 ? cfg.steerSpeed : cfg.steerReturnSpeed
+    const targetSteer = input.steerInput * cfg.maxSteerAngle * steerReduction * steerAssist
+    const steerRateBoost = 1 + lowSpeedAssist * (cfg.lowSpeedSteerResponseBoost - 1)
+    const steerRate = (Math.abs(input.steerInput) > 0.01 ? cfg.steerSpeed : cfg.steerReturnSpeed) * steerRateBoost
     currentSteer.current = lerp(currentSteer.current, targetSteer, 1 - Math.exp(-steerRate * dt))
     mutation.steerAngle = currentSteer.current
 

@@ -35,6 +35,9 @@ export const VEHICLE_CONFIG = {
   steerSpeed: 5.0,
   steerReturnSpeed: 8.0,
   speedSteerReduction: 0.6, // at max speed, steer range is reduced by 60%
+  lowSpeedSteerAssistCutoff: 12, // m/s where close-quarters steering help tapers out
+  lowSpeedSteerAngleBoost: 1.18,
+  lowSpeedSteerResponseBoost: 1.3,
 
   // Boost
   maxBoost: 100,

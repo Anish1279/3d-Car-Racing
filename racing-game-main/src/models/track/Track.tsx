@@ -64,9 +64,6 @@ export function Track(): JSX.Element {
           <mesh geometry={n.track_1.geometry} material={n.track_1.material} {...config} />
         </MeshCollider>
         <MeshCollider type="trimesh">
-          <mesh geometry={n.strip.geometry} material={n.strip.material} {...config} />
-        </MeshCollider>
-        <MeshCollider type="trimesh">
           <mesh geometry={n.terrain.geometry} material={n.terrain.material} {...config} />
         </MeshCollider>
         <MeshCollider type="trimesh">
@@ -75,6 +72,7 @@ export function Track(): JSX.Element {
       </RigidBody>
 
       {/* Non-colliding visuals */}
+      {/* Keep the decorative strip visual-only so its thin edge detail cannot snag the chassis. */}
       <mesh geometry={n.track_2.geometry} material={m['Material.001']} {...config} />
       <mesh geometry={n.tube.geometry} material={m['default']} {...config} />
 
