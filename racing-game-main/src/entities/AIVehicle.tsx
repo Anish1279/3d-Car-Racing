@@ -15,6 +15,7 @@ import {
   VEHICLE_LOCAL_FORWARD,
   VEHICLE_LOCAL_RIGHT,
 } from '@/game/config/constants'
+import { useStore } from '@/game/state/store'
 
 const _targetDir = new Vector3()
 const _fwd = new Vector3()
@@ -41,6 +42,8 @@ export function AIVehicle({ index, startOffset = 0 }: AIVehicleProps) {
   const rbRef = useRef<RapierRigidBody>(null)
   const meshRef = useRef<Group>(null)
   const currentWaypoint = useRef((index * 3 + startOffset) % TRACK_WAYPOINTS.length)
+  const paused = useStore((s) => s.paused)
+  const raceState = useStore((s) => s.raceState)
   const { nodes: n } = useGLTF('/models/chassis-draco.glb') as unknown as ChassisGLTF
 
   const color = AI_COLORS[index % AI_COLORS.length]
@@ -54,12 +57,20 @@ export function AIVehicle({ index, startOffset = 0 }: AIVehicleProps) {
     const rb = rbRef.current
     if (!rb) return
 
+    const pos = rb.translation()
+    const rot = rb.rotation()
+
+    if (meshRef.current) {
+      meshRef.current.position.set(pos.x, pos.y, pos.z)
+      meshRef.current.quaternion.set(rot.x, rot.y, rot.z, rot.w)
+    }
+
+    if (raceState !== 'racing' || paused) return
+
     const dt = Math.min(delta, 1 / 30)
     const cfg = AI_CONFIG
 
     // Get AI position
-    const pos = rb.translation()
-    const rot = rb.rotation()
     _pos.set(pos.x, pos.y, pos.z)
     _quat.set(rot.x, rot.y, rot.z, rot.w)
 
@@ -111,11 +122,6 @@ export function AIVehicle({ index, startOffset = 0 }: AIVehicleProps) {
     const lateralCorrection = _right.multiplyScalar(-lateralVel * 0.8 * dt * 60)
     rb.applyImpulse({ x: lateralCorrection.x, y: 0, z: lateralCorrection.z }, true)
 
-    // Sync visual mesh
-    if (meshRef.current) {
-      meshRef.current.position.set(pos.x, pos.y, pos.z)
-      meshRef.current.quaternion.set(rot.x, rot.y, rot.z, rot.w)
-    }
   })
 
   return (

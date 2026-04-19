@@ -45,41 +45,70 @@ export function Train({
   const { actions } = useAnimations(animations, groupRef)
   const sound = useStore((s) => s.sound)
   const ready = useStore((s) => s.ready)
+  const paused = useStore((s) => s.paused)
   const raceState = useStore((s) => s.raceState)
   const config = { receiveShadow: true, castShadow: true, 'material-roughness': 1 }
+  const trainAction = actions.train
 
-  const isRacing = ready && sound && (raceState === 'countdown' || raceState === 'racing')
+  const isRacing = ready && sound && !paused && (raceState === 'countdown' || raceState === 'racing')
+
+  useEffect(() => {
+    if (!trainAction) return
+
+    trainAction.play()
+
+    return () => {
+      trainAction.stop()
+    }
+  }, [trainAction])
+
+  useEffect(() => {
+    if (!trainAction) return
+
+    trainAction.paused = paused
+  }, [paused, trainAction])
 
   useEffect(() => {
     const audio = trainAudioRef.current
     if (!audio) return
 
+    let active = true
+    let retryTimeout: number | null = null
+
+    const stopAudio = () => {
+      if (retryTimeout !== null) {
+        window.clearTimeout(retryTimeout)
+        retryTimeout = null
+      }
+
+      if (audio.isPlaying) audio.stop()
+      audioStarted.current = false
+    }
+
     if (isRacing) {
       const tryPlay = () => {
+        if (!active) return
+
         if (audio.buffer && !audio.isPlaying) {
           audio.setVolume(0) // start silent — useFrame controls volume by proximity
           audio.play()
           audioStarted.current = true
         } else if (!audio.buffer) {
-          setTimeout(tryPlay, 200)
+          retryTimeout = window.setTimeout(tryPlay, 200)
         }
       }
       tryPlay()
     } else {
-      if (audio.isPlaying) audio.stop()
-      audioStarted.current = false
+      stopAudio()
     }
+
     return () => {
-      if (audio?.isPlaying) audio.stop()
-      audioStarted.current = false
+      active = false
+      stopAudio()
     }
   }, [isRacing])
 
   useFrame((state) => {
-    // Play train animation
-    if (actions.train && !actions.train.isRunning()) {
-      actions.train.play()
-    }
     // Sync Rapier kinematic body with animated mesh
     if (rbRef.current && groupRef.current) {
       const p = groupRef.current.position

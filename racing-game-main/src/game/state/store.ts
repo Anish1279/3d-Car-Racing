@@ -149,6 +149,7 @@ export interface IState {
   countdownValue: number
   hasPassedCheckpoint: boolean
   penaltyTimeMs: number
+  pauseStartedAt: number
   recoveryCount: number
   finishReason: string
   finalTimeMs: number
@@ -212,9 +213,16 @@ export interface IState {
   get: () => IState
 }
 
-export const getElapsedRaceTime = (state: Pick<IState, 'raceStartTime' | 'penaltyTimeMs'>, now = Date.now()): number => {
+export const canResetRace = (state: Pick<IState, 'ready' | 'raceState'>): boolean =>
+  state.ready && state.raceState !== 'menu'
+
+export const getElapsedRaceTime = (
+  state: Pick<IState, 'raceStartTime' | 'penaltyTimeMs' | 'paused' | 'pauseStartedAt'>,
+  now = Date.now(),
+): number => {
   if (!state.raceStartTime) return 0
-  return Math.max(0, now - state.raceStartTime + state.penaltyTimeMs)
+  const effectiveNow = state.paused && state.pauseStartedAt ? state.pauseStartedAt : now
+  return Math.max(0, effectiveNow - state.raceStartTime + state.penaltyTimeMs)
 }
 
 export const computeFinalScore = (state: Pick<IState, 'lapTimes' | 'hasPassedCheckpoint' | 'recoveryCount'>, finalTimeMs: number, didFinish: boolean) => {
@@ -250,6 +258,7 @@ export const createBaseState = (): Omit<IState, 'actions' | 'set' | 'get'> => ({
   countdownValue: COUNTDOWN_DURATION,
   hasPassedCheckpoint: false,
   penaltyTimeMs: 0,
+  pauseStartedAt: 0,
   recoveryCount: 0,
   finishReason: '',
   finalTimeMs: 0,
@@ -289,6 +298,8 @@ export const useStore = create<IState>((set, get) => ({
       })),
 
     reset: () => {
+      const state = get()
+      if (!canResetRace(state)) return
       get().actions.startCountdown()
     },
 
@@ -306,6 +317,7 @@ export const useStore = create<IState>((set, get) => ({
         countdownValue: COUNTDOWN_DURATION,
         hasPassedCheckpoint: false,
         penaltyTimeMs: 0,
+        pauseStartedAt: 0,
         recoveryCount: 0,
         finishReason: '',
         finalTimeMs: 0,
@@ -326,6 +338,7 @@ export const useStore = create<IState>((set, get) => ({
         lastLapTime: 0,
         checkpointTime: 0,
         hasPassedCheckpoint: false,
+        pauseStartedAt: 0,
         controls: { ...defaultControls },
         paused: false,
       })
@@ -352,6 +365,8 @@ export const useStore = create<IState>((set, get) => ({
           bestLapTime: bestLap,
           hasPassedCheckpoint: false,
           controls: { ...defaultControls },
+          paused: false,
+          pauseStartedAt: 0,
           finishReason: 'Race complete',
           finalTimeMs,
           finalScore: computeFinalScore(
@@ -394,6 +409,8 @@ export const useStore = create<IState>((set, get) => ({
       set({
         raceState: 'finished',
         controls: { ...defaultControls },
+        paused: false,
+        pauseStartedAt: 0,
         finishReason: 'Race complete',
         finalTimeMs,
         finalScore: computeFinalScore(state, finalTimeMs, true),
@@ -409,6 +426,7 @@ export const useStore = create<IState>((set, get) => ({
         raceState: 'gameover',
         controls: { ...defaultControls },
         paused: false,
+        pauseStartedAt: 0,
         finishReason: reason,
         finalTimeMs,
         finalScore: computeFinalScore(state, finalTimeMs, false),
@@ -429,6 +447,7 @@ export const useStore = create<IState>((set, get) => ({
         countdownValue: COUNTDOWN_DURATION,
         hasPassedCheckpoint: false,
         penaltyTimeMs: 0,
+        pauseStartedAt: 0,
         recoveryCount: 0,
         finishReason: '',
         finalTimeMs: 0,
@@ -449,6 +468,7 @@ export const useStore = create<IState>((set, get) => ({
         respawnRotation: [rotation[0], rotation[1], rotation[2]],
         controls: { ...defaultControls },
         paused: false,
+        pauseStartedAt: 0,
         penaltyTimeMs: s.penaltyTimeMs + (s.raceState === 'racing' ? penaltyMs : 0),
         recoveryCount: s.recoveryCount + (s.raceState === 'racing' ? 1 : 0),
       }))
@@ -460,8 +480,33 @@ export const useStore = create<IState>((set, get) => ({
 
     togglePause: () =>
       set((s) => {
-        if (s.raceState === 'racing') return { paused: !s.paused }
-        if (s.paused) return { paused: false }
+        if (s.raceState === 'racing' && !s.paused) {
+          return {
+            paused: true,
+            pauseStartedAt: Date.now(),
+            controls: { ...defaultControls },
+          }
+        }
+
+        if (s.raceState === 'racing' && s.paused) {
+          const pausedDuration = s.pauseStartedAt ? Date.now() - s.pauseStartedAt : 0
+
+          return {
+            paused: false,
+            pauseStartedAt: 0,
+            raceStartTime: s.raceStartTime ? s.raceStartTime + pausedDuration : s.raceStartTime,
+            controls: { ...defaultControls },
+          }
+        }
+
+        if (s.paused) {
+          return {
+            paused: false,
+            pauseStartedAt: 0,
+            controls: { ...defaultControls },
+          }
+        }
+
         return {}
       }),
 

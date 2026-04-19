@@ -17,6 +17,7 @@ import { Minimap } from '@/game/ui/components'
 export function RaceScene(): JSX.Element {
   const dpr = useStore((state) => state.dpr)
   const map = useStore((state) => state.map)
+  const paused = useStore((state) => state.paused)
   const shadows = useStore((state) => state.shadows)
   const { completeLap, hitCheckpoint } = useStore((state) => state.actions)
 
@@ -38,7 +39,7 @@ export function RaceScene(): JSX.Element {
       />
       <PerspectiveCamera makeDefault fov={65} position={[0, 20, 20]} />
 
-      <Physics gravity={[0, -9.81, 0]} debug={false}>
+      <Physics gravity={[0, -9.81, 0]} debug={false} paused={paused}>
         <Vehicle position={[...SPAWN_POSITION]} rotation={[...SPAWN_ROTATION]} />
         <Train />
         <Ramp args={[30, 6, 8]} position={[2, -1, 168.55]} rotation={[0, 0.49, Math.PI / 15]} />

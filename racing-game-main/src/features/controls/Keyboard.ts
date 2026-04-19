@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { actionInputMap, isControl, useStore } from '@/game/state/store'
+import { actionInputMap, canResetRace, isControl, useStore } from '@/game/state/store'
 import type { BindableAction } from '@/game/state/store'
 
 export function Keyboard() {
@@ -37,7 +37,9 @@ export function Keyboard() {
         // Toggle actions on key up
         switch (action) {
           case 'camera': actions.cycleCamera(); break
-          case 'reset': actions.reset(); break
+          case 'reset':
+            if (canResetRace(useStore.getState())) actions.reset()
+            break
           case 'help': actions.toggleHelp(); break
           case 'map': actions.toggleMap(); break
           case 'sound': actions.toggleSound(); break

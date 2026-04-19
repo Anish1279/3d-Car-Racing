@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TOTAL_LAPS } from '@/game/config/constants'
 import {
+  canResetRace,
   createBaseState,
   getElapsedRaceTime,
   readableTime,
@@ -21,10 +22,31 @@ describe('game store', () => {
   })
 
   it('formats elapsed race time consistently', () => {
-    expect(getElapsedRaceTime({ raceStartTime: 0, penaltyTimeMs: 0 })).toBe(0)
-    expect(getElapsedRaceTime({ raceStartTime: 1_000, penaltyTimeMs: 3_000 }, 9_500)).toBe(11_500)
+    expect(getElapsedRaceTime({ raceStartTime: 0, penaltyTimeMs: 0, paused: false, pauseStartedAt: 0 })).toBe(0)
+    expect(getElapsedRaceTime({ raceStartTime: 1_000, penaltyTimeMs: 3_000, paused: false, pauseStartedAt: 0 }, 9_500)).toBe(11_500)
+    expect(getElapsedRaceTime({ raceStartTime: 1_000, penaltyTimeMs: 3_000, paused: true, pauseStartedAt: 4_500 }, 9_500)).toBe(6_500)
     expect(readableTime(0)).toBe('0.00')
     expect(readableTime(62_340)).toBe('1:02.34')
+  })
+
+  it('only allows reset after the race has started outside the menu flow', () => {
+    const { actions } = useStore.getState()
+
+    expect(canResetRace(useStore.getState())).toBe(false)
+    actions.reset()
+    expect(useStore.getState().raceState).toBe('menu')
+
+    useStore.setState({ ready: true })
+    expect(canResetRace(useStore.getState())).toBe(false)
+    actions.reset()
+    expect(useStore.getState().raceState).toBe('menu')
+
+    actions.startRace()
+    expect(canResetRace(useStore.getState())).toBe(true)
+
+    actions.reset()
+
+    expect(useStore.getState().raceState).toBe('countdown')
   })
 
   it('requires a checkpoint before registering a completed lap', () => {
@@ -45,6 +67,24 @@ describe('game store', () => {
     expect(state.currentLap).toBe(2)
     expect(state.lapTimes).toHaveLength(1)
     expect(state.hasPassedCheckpoint).toBe(false)
+  })
+
+  it('freezes elapsed race time while paused and resumes without counting the pause gap', () => {
+    useStore.setState({ ready: true })
+    const { actions } = useStore.getState()
+
+    actions.startRace()
+    vi.advanceTimersByTime(5_000)
+
+    actions.togglePause()
+    vi.advanceTimersByTime(10_000)
+    expect(useStore.getState().paused).toBe(true)
+    expect(getElapsedRaceTime(useStore.getState())).toBe(5_000)
+
+    actions.togglePause()
+    vi.advanceTimersByTime(2_000)
+    expect(useStore.getState().paused).toBe(false)
+    expect(getElapsedRaceTime(useStore.getState())).toBe(7_000)
   })
 
   it('transitions to a finished state after the final lap', () => {

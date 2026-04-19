@@ -41,6 +41,7 @@ export function Track(): JSX.Element {
   const level = useStore((state) => state.level)
   const sound = useStore((s) => s.sound)
   const ready = useStore((s) => s.ready)
+  const paused = useStore((s) => s.paused)
   const raceState = useStore((s) => s.raceState)
   const { nodes: n, materials: m } = useGLTF('/models/track-draco.glb') as unknown as TrackGLTF
   const config = { receiveShadow: true, castShadow: true, 'material-roughness': 1 }
@@ -49,31 +50,46 @@ export function Track(): JSX.Element {
   const waterAudioRef = useRef<PositionalAudioImpl>(null)
   const waterStarted = useRef(false)
 
-  const isRacing = ready && sound && (raceState === 'countdown' || raceState === 'racing')
+  const isRacing = ready && sound && !paused && (raceState === 'countdown' || raceState === 'racing')
 
   // Start/stop water audio based on race state
   useEffect(() => {
     const audio = waterAudioRef.current
     if (!audio) return
 
+    let active = true
+    let retryTimeout: number | null = null
+
+    const stopAudio = () => {
+      if (retryTimeout !== null) {
+        window.clearTimeout(retryTimeout)
+        retryTimeout = null
+      }
+
+      if (audio.isPlaying) audio.stop()
+      waterStarted.current = false
+    }
+
     if (isRacing) {
       const tryPlay = () => {
+        if (!active) return
+
         if (audio.buffer && !audio.isPlaying) {
           audio.setVolume(0) // start silent — useFrame controls volume by proximity
           audio.play()
           waterStarted.current = true
         } else if (!audio.buffer) {
-          setTimeout(tryPlay, 200)
+          retryTimeout = window.setTimeout(tryPlay, 200)
         }
       }
       tryPlay()
     } else {
-      if (audio.isPlaying) audio.stop()
-      waterStarted.current = false
+      stopAudio()
     }
+
     return () => {
-      if (audio?.isPlaying) audio.stop()
-      waterStarted.current = false
+      active = false
+      stopAudio()
     }
   }, [isRacing])
 
