@@ -2,14 +2,20 @@ import { createRef } from 'react'
 import { create } from 'zustand'
 import type { RefObject } from 'react'
 import type { Group } from 'three'
-import { VEHICLE_CONFIG, SPAWN_POSITION, SPAWN_ROTATION, TOTAL_LAPS } from './physics/constants'
+import {
+  COUNTDOWN_DURATION,
+  SPAWN_POSITION,
+  SPAWN_ROTATION,
+  TOTAL_LAPS,
+  VEHICLE_CONFIG,
+} from './physics/constants'
 
 // ─── CAMERA MODES ──────────────────────────────────────────────
 export const cameras = ['DEFAULT', 'FIRST_PERSON', 'BIRD_EYE'] as const
 export type Camera = (typeof cameras)[number]
 
 // ─── RACE STATE ────────────────────────────────────────────────
-export type RaceState = 'menu' | 'countdown' | 'racing' | 'finished' | 'paused'
+export type RaceState = 'menu' | 'countdown' | 'racing' | 'finished' | 'gameover'
 
 // ─── CONTROLS ──────────────────────────────────────────────────
 export interface Controls {
@@ -31,6 +37,33 @@ const defaultControls: Controls = {
   boost: false,
   honk: false,
 }
+
+const cloneTuple = (tuple: readonly [number, number, number]): [number, number, number] => [
+  tuple[0],
+  tuple[1],
+  tuple[2],
+]
+
+const resetVehicleMutation = () => {
+  mutation.boost = VEHICLE_CONFIG.maxBoost
+  mutation.speed = 0
+  mutation.velocity = [0, 0, 0]
+  mutation.steerAngle = 0
+  mutation.gear = 1
+  mutation.rpmTarget = 0
+  mutation.sliding = false
+  mutation.boostCooldown = 0
+  mutation.wheelStates.forEach((wheelState) => {
+    wheelState.compression = 0
+    wheelState.isGrounded = false
+    wheelState.spinAngle = 0
+  })
+}
+
+const getSpawnState = () => ({
+  respawnPosition: cloneTuple(SPAWN_POSITION),
+  respawnRotation: cloneTuple(SPAWN_ROTATION),
+})
 
 // ─── MUTATION (frame-loop mutable state, never in React) ──────
 export interface Mutation {
@@ -102,6 +135,16 @@ export interface IState {
   bestCheckpointTime: number
   countdownValue: number
   hasPassedCheckpoint: boolean
+  penaltyTimeMs: number
+  recoveryCount: number
+  finishReason: string
+  finalTimeMs: number
+  finalScore: number
+
+  // Respawn
+  respawnNonce: number
+  respawnPosition: [number, number, number]
+  respawnRotation: [number, number, number]
 
   // Vehicle
   controls: Controls
@@ -135,6 +178,13 @@ export interface IState {
     completeLap: () => void
     hitCheckpoint: () => void
     finishRace: () => void
+    gameOver: (reason?: string) => void
+    returnToMenu: () => void
+    queueRespawn: (
+      position: [number, number, number],
+      rotation: [number, number, number],
+      penaltyMs?: number
+    ) => void
     setPlayerName: (name: string) => void
     togglePause: () => void
     toggleHelp: () => void
@@ -147,6 +197,21 @@ export interface IState {
 
   set: (partial: Partial<IState> | ((state: IState) => Partial<IState>)) => void
   get: () => IState
+}
+
+export const getElapsedRaceTime = (state: Pick<IState, 'raceStartTime' | 'penaltyTimeMs'>, now = Date.now()): number => {
+  if (!state.raceStartTime) return 0
+  return Math.max(0, now - state.raceStartTime + state.penaltyTimeMs)
+}
+
+const computeFinalScore = (state: Pick<IState, 'lapTimes' | 'hasPassedCheckpoint' | 'recoveryCount'>, finalTimeMs: number, didFinish: boolean) => {
+  const progressScore = state.lapTimes.length * 1500 + (state.hasPassedCheckpoint ? 600 : 0)
+  const finishBonus = didFinish ? 3000 : 0
+  const timePenalty = Math.floor(finalTimeMs / 1000) * 12
+  const recoveryPenalty = state.recoveryCount * 350
+  const crashPenalty = didFinish ? 0 : 750
+
+  return Math.max(0, progressScore + finishBonus - timePenalty - recoveryPenalty - crashPenalty)
 }
 
 export const useStore = create<IState>((set, get) => ({
@@ -164,8 +229,17 @@ export const useStore = create<IState>((set, get) => ({
   bestLapTime: 0,
   checkpointTime: 0,
   bestCheckpointTime: 0,
-  countdownValue: 3,
+  countdownValue: COUNTDOWN_DURATION,
   hasPassedCheckpoint: false,
+  penaltyTimeMs: 0,
+  recoveryCount: 0,
+  finishReason: '',
+  finalTimeMs: 0,
+  finalScore: 0,
+
+  // Respawn
+  respawnNonce: 0,
+  ...getSpawnState(),
 
   // Vehicle
   controls: { ...defaultControls },
@@ -192,7 +266,10 @@ export const useStore = create<IState>((set, get) => ({
   // Actions
   actions: {
     setControl: (control, value) =>
-      set((s) => ({ controls: { ...s.controls, [control]: value } })),
+      set((s) => {
+        if (s.raceState === 'finished' || s.raceState === 'gameover' || s.raceState === 'menu') return {}
+        return { controls: { ...s.controls, [control]: value } }
+      }),
 
     cycleCamera: () =>
       set((s) => ({
@@ -200,34 +277,45 @@ export const useStore = create<IState>((set, get) => ({
       })),
 
     reset: () => {
-      mutation.boost = VEHICLE_CONFIG.maxBoost
-      mutation.speed = 0
-      mutation.velocity = [0, 0, 0]
-      mutation.steerAngle = 0
-      mutation.gear = 1
-      set({
-        raceState: 'menu',
+      get().actions.startCountdown()
+    },
+
+    startCountdown: () => {
+      resetVehicleMutation()
+      set((s) => ({
+        raceState: 'countdown',
         currentLap: 0,
         lapTimes: [],
         raceStartTime: 0,
         lastLapTime: 0,
+        bestLapTime: 0,
         checkpointTime: 0,
+        bestCheckpointTime: 0,
+        countdownValue: COUNTDOWN_DURATION,
         hasPassedCheckpoint: false,
+        penaltyTimeMs: 0,
+        recoveryCount: 0,
+        finishReason: '',
+        finalTimeMs: 0,
+        finalScore: 0,
         controls: { ...defaultControls },
-        countdownValue: 3,
-      })
-    },
-
-    startCountdown: () => {
-      set({ raceState: 'countdown', countdownValue: 3, currentLap: 0, lapTimes: [] })
+        paused: false,
+        respawnNonce: s.respawnNonce + 1,
+        ...getSpawnState(),
+      }))
     },
 
     startRace: () => {
+      resetVehicleMutation()
       set({
         raceState: 'racing',
         raceStartTime: Date.now(),
         currentLap: 1,
+        lastLapTime: 0,
+        checkpointTime: 0,
         hasPassedCheckpoint: false,
+        controls: { ...defaultControls },
+        paused: false,
       })
     },
 
@@ -236,27 +324,35 @@ export const useStore = create<IState>((set, get) => ({
       if (state.raceState !== 'racing' || !state.hasPassedCheckpoint) return
 
       const now = Date.now()
-      const lapTime = state.lastLapTime
-        ? now - state.lastLapTime
-        : now - state.raceStartTime
-
+      const elapsed = getElapsedRaceTime(state, now)
+      const lapTime = state.lastLapTime ? elapsed - state.lastLapTime : elapsed
       const newLapTimes = [...state.lapTimes, lapTime]
       const newLap = state.currentLap + 1
-      const bestLap = state.bestLapTime
-        ? Math.min(state.bestLapTime, lapTime)
-        : lapTime
+      const bestLap = state.bestLapTime ? Math.min(state.bestLapTime, lapTime) : lapTime
 
       if (newLap > state.totalLaps) {
+        const finalTimeMs = elapsed
         set({
           raceState: 'finished',
+          currentLap: state.totalLaps,
           lapTimes: newLapTimes,
+          lastLapTime: elapsed,
           bestLapTime: bestLap,
+          hasPassedCheckpoint: false,
+          controls: { ...defaultControls },
+          finishReason: 'Race complete',
+          finalTimeMs,
+          finalScore: computeFinalScore(
+            { lapTimes: newLapTimes, hasPassedCheckpoint: false, recoveryCount: state.recoveryCount },
+            finalTimeMs,
+            true,
+          ),
         })
       } else {
         set({
           currentLap: newLap,
           lapTimes: newLapTimes,
-          lastLapTime: now,
+          lastLapTime: elapsed,
           bestLapTime: bestLap,
           hasPassedCheckpoint: false,
         })
@@ -267,7 +363,7 @@ export const useStore = create<IState>((set, get) => ({
       const state = get()
       if (state.raceState !== 'racing' || state.hasPassedCheckpoint) return
 
-      const checkpointTime = Date.now() - state.raceStartTime
+      const checkpointTime = getElapsedRaceTime(state)
       const bestCp = state.bestCheckpointTime
         ? Math.min(state.bestCheckpointTime, checkpointTime)
         : checkpointTime
@@ -282,7 +378,68 @@ export const useStore = create<IState>((set, get) => ({
     finishRace: () => {
       const state = get()
       if (state.raceState !== 'racing') return
-      set({ raceState: 'finished' })
+      const finalTimeMs = getElapsedRaceTime(state)
+      set({
+        raceState: 'finished',
+        controls: { ...defaultControls },
+        finishReason: 'Race complete',
+        finalTimeMs,
+        finalScore: computeFinalScore(state, finalTimeMs, true),
+      })
+    },
+
+    gameOver: (reason = 'Crash detected') => {
+      const state = get()
+      if (state.raceState !== 'racing' && state.raceState !== 'countdown') return
+
+      const finalTimeMs = getElapsedRaceTime(state)
+      set({
+        raceState: 'gameover',
+        controls: { ...defaultControls },
+        paused: false,
+        finishReason: reason,
+        finalTimeMs,
+        finalScore: computeFinalScore(state, finalTimeMs, false),
+      })
+    },
+
+    returnToMenu: () => {
+      resetVehicleMutation()
+      set({
+        raceState: 'menu',
+        currentLap: 0,
+        lapTimes: [],
+        raceStartTime: 0,
+        lastLapTime: 0,
+        bestLapTime: 0,
+        checkpointTime: 0,
+        bestCheckpointTime: 0,
+        countdownValue: COUNTDOWN_DURATION,
+        hasPassedCheckpoint: false,
+        penaltyTimeMs: 0,
+        recoveryCount: 0,
+        finishReason: '',
+        finalTimeMs: 0,
+        finalScore: 0,
+        controls: { ...defaultControls },
+        paused: false,
+        ...getSpawnState(),
+      })
+    },
+
+    queueRespawn: (position, rotation, penaltyMs = 0) => {
+      const state = get()
+      if (state.raceState !== 'racing' && state.raceState !== 'countdown') return
+
+      set((s) => ({
+        respawnNonce: s.respawnNonce + 1,
+        respawnPosition: [position[0], position[1], position[2]],
+        respawnRotation: [rotation[0], rotation[1], rotation[2]],
+        controls: { ...defaultControls },
+        paused: false,
+        penaltyTimeMs: s.penaltyTimeMs + (s.raceState === 'racing' ? penaltyMs : 0),
+        recoveryCount: s.recoveryCount + (s.raceState === 'racing' ? 1 : 0),
+      }))
     },
 
     setPlayerName: (name: string) => {

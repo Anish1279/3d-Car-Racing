@@ -7,6 +7,11 @@ export const COLLISION_GROUP_SENSOR = 2
 export const COLLISION_GROUP_AI = 3
 
 // ─── VEHICLE PHYSICS CONFIG ────────────────────────────────────
+// Canonical vehicle basis used across physics, camera, AI, and minimap:
+// +X = right, +Y = up, +Z = forward (car nose / front axle direction).
+export const VEHICLE_LOCAL_FORWARD = [0, 0, 1] as const
+export const VEHICLE_LOCAL_RIGHT = [1, 0, 0] as const
+
 export const VEHICLE_CONFIG = {
   // Chassis
   chassisMass: 800,
@@ -64,9 +69,34 @@ export const VEHICLE_CONFIG = {
   lateralFrictionDamping: 0.92,
 } as const
 
-// ─── SPAWN POSITION ────────────────────────────────────────────
-export const SPAWN_POSITION = [-110, 2.5, 220] as const
-export const SPAWN_ROTATION = [0, Math.PI / 2 + 0.35, 0] as const
+// ─── TRACK LANDMARKS ───────────────────────────────────────────
+export const START_LINE_POSITION = [-27, 1, 180] as const
+export const START_LINE_ROTATION = [0, 0.55, 0] as const
+export const FINISH_LINE_POSITION = [-104, 1, -189] as const
+export const FINISH_LINE_ROTATION = [0, -1.2, 0] as const
+export const CHECKPOINT_POSITION = [-50, 1, -5] as const
+export const CHECKPOINT_ROTATION = [0, -0.5, 0] as const
+
+const START_LINE_DIRECTION = [
+  Math.cos(START_LINE_ROTATION[1]),
+  0,
+  -Math.sin(START_LINE_ROTATION[1]),
+] as const
+
+const PLAYER_SPAWN_BACK_OFFSET = 12
+
+// Spawn is derived from the actual start gate so retry/menu resets always
+// place the player at the same canonical launch point.
+export const SPAWN_POSITION = [
+  START_LINE_POSITION[0] - START_LINE_DIRECTION[0] * PLAYER_SPAWN_BACK_OFFSET,
+  2.5,
+  START_LINE_POSITION[2] - START_LINE_DIRECTION[2] * PLAYER_SPAWN_BACK_OFFSET,
+] as const
+export const SPAWN_ROTATION = [
+  0,
+  Math.atan2(START_LINE_DIRECTION[0], START_LINE_DIRECTION[2]),
+  0,
+] as const
 
 // ─── AI WAYPOINTS ──────────────────────────────────────────────
 export const TRACK_WAYPOINTS: [number, number, number][] = [

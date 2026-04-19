@@ -3,7 +3,7 @@ import { Vector3, Quaternion, MathUtils } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import type { RapierRigidBody } from '@react-three/rapier'
 import { mutation, useStore } from '../store'
-import { VEHICLE_CONFIG } from '../physics/constants'
+import { VEHICLE_CONFIG, VEHICLE_LOCAL_FORWARD } from '../physics/constants'
 
 const { lerp } = MathUtils
 
@@ -53,10 +53,12 @@ export function Cameras({ chassisRef }: CamerasProps) {
   const cameraMode = useStore((s) => s.camera)
   const editor = useStore((s) => s.editor)
   const chassisBody = useStore((s) => s.chassisBody)
+  const respawnNonce = useStore((s) => s.respawnNonce)
 
   const smoothPosition = useRef(new Vector3(0, 5, 15))
   const smoothLookAt = useRef(new Vector3())
   const smoothFov = useRef(65)
+  const appliedRespawnNonce = useRef(-1)
 
   useFrame((state, delta) => {
     if (editor || !chassisRef.current) return
@@ -77,15 +79,21 @@ export function Cameras({ chassisRef }: CamerasProps) {
       _quat.set(rot.x, rot.y, rot.z, rot.w)
     }
 
-    _chassisFwd.set(0, 0, -1).applyQuaternion(_quat)
+    _chassisFwd.set(...VEHICLE_LOCAL_FORWARD).applyQuaternion(_quat)
     _horizontalFwd.copy(_chassisFwd).setY(0)
     if (_horizontalFwd.lengthSq() < 1e-4) {
-      _horizontalFwd.set(0, 0, -1)
+      _horizontalFwd.set(...VEHICLE_LOCAL_FORWARD)
     } else {
       _horizontalFwd.normalize()
     }
 
     const speedRatio = Math.min(speed / maxSpeed, 1)
+
+    if (appliedRespawnNonce.current !== respawnNonce) {
+      appliedRespawnNonce.current = respawnNonce
+      smoothPosition.current.copy(_chassisPos)
+      smoothLookAt.current.copy(_chassisPos)
+    }
 
     if (cameraMode === 'DEFAULT') {
       const cfg = CAM_CONFIG.DEFAULT

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { COUNTDOWN_DURATION } from '../physics/constants'
 
@@ -18,23 +18,28 @@ export function Countdown(): JSX.Element | null {
 
     setVisible(true)
     let count = COUNTDOWN_DURATION
+    const timers: number[] = []
 
     const tick = () => {
       if (count > 0) {
         setDisplay(String(count))
         set({ countdownValue: count })
         count--
-        setTimeout(tick, 1000)
+        timers.push(window.setTimeout(tick, 1000))
       } else {
         setDisplay('GO!')
         startRace()
-        setTimeout(() => setVisible(false), 800)
+        timers.push(window.setTimeout(() => setVisible(false), 800))
       }
     }
 
     // Small delay before countdown starts
-    setTimeout(tick, 500)
-  }, [raceState])
+    timers.push(window.setTimeout(tick, 500))
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [raceState, set, startRace])
 
   if (!visible) return null
 

@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { addEffect } from '@react-three/fiber'
-import { useStore, readableTime } from '../store'
+import { getElapsedRaceTime, readableTime, useStore } from '../store'
 
 export function Clock() {
   const ref = useRef<HTMLSpanElement>(null)
   const lapRef = useRef<HTMLSpanElement>(null)
   const raceState = useStore((s) => s.raceState)
-  const raceStartTime = useStore((s) => s.raceStartTime)
   const currentLap = useStore((s) => s.currentLap)
   const totalLaps = useStore((s) => s.totalLaps)
 
@@ -15,10 +14,11 @@ export function Clock() {
       if (!ref.current) return
       const state = useStore.getState()
       if (state.raceState === 'racing' && state.raceStartTime) {
-        const elapsed = Date.now() - state.raceStartTime
+        const elapsed = getElapsedRaceTime(state)
         ref.current.innerText = readableTime(elapsed)
-      } else if (state.raceState === 'finished') {
+      } else if (state.raceState === 'finished' || state.raceState === 'gameover') {
         // Keep final time
+        ref.current.innerText = readableTime(state.finalTimeMs)
       } else {
         ref.current.innerText = '0.00'
       }

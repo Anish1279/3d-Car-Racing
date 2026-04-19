@@ -1,4 +1,3 @@
-import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Sky, Environment, PerspectiveCamera } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
@@ -6,7 +5,15 @@ import { Physics } from '@react-three/rapier'
 import { HideMouse, Keyboard } from './controls'
 import { BoundingBox, Ramp, Track, Vehicle, Goal, Train, Heightmap, AIVehicle } from './models'
 import { useStore } from './store'
-import { SPAWN_POSITION, SPAWN_ROTATION, AI_COUNT } from './physics/constants'
+import {
+  AI_COUNT,
+  CHECKPOINT_POSITION,
+  CHECKPOINT_ROTATION,
+  FINISH_LINE_POSITION,
+  FINISH_LINE_ROTATION,
+  SPAWN_POSITION,
+  SPAWN_ROTATION,
+} from './physics/constants'
 import { Countdown } from './ui/Countdown'
 import { Clock } from './ui/Clock'
 import { Speed } from './ui/Speed'
@@ -20,8 +27,7 @@ export function App(): JSX.Element {
   const dpr = useStore((s) => s.dpr)
   const shadows = useStore((s) => s.shadows)
   const raceState = useStore((s) => s.raceState)
-  const ready = useStore((s) => s.ready)
-  const { hitCheckpoint, completeLap, startCountdown } = useStore((s) => s.actions)
+  const { hitCheckpoint, completeLap } = useStore((s) => s.actions)
   const map = useStore((s) => s.map)
 
   return (
@@ -53,9 +59,8 @@ export function App(): JSX.Element {
           <Heightmap elementSize={0.5085} position={[327 - 66.5, -3.3, -473 + 213]} rotation={[-Math.PI / 2, 0, -Math.PI]} />
 
           {/* Race triggers */}
-          <Goal args={[0.001, 10, 18]} onEnter={startCountdown} rotation={[0, 0.55, 0]} position={[-27, 1, 180]} />
-          <Goal args={[0.001, 10, 18]} onEnter={completeLap} rotation={[0, -1.2, 0]} position={[-104, 1, -189]} />
-          <Goal args={[0.001, 10, 18]} onEnter={hitCheckpoint} rotation={[0, -0.5, 0]} position={[-50, 1, -5]} />
+          <Goal args={[0.001, 10, 18]} onEnter={completeLap} rotation={[...FINISH_LINE_ROTATION]} position={[...FINISH_LINE_POSITION]} />
+          <Goal args={[0.001, 10, 18]} onEnter={hitCheckpoint} rotation={[...CHECKPOINT_ROTATION]} position={[...CHECKPOINT_POSITION]} />
 
           <BoundingBox depth={512} height={100} position={[0, 40, 0]} width={512} />
 
@@ -77,7 +82,7 @@ export function App(): JSX.Element {
       <Speed />
       <Help />
       <Countdown />
-      {raceState === 'finished' && <Finished />}
+      {(raceState === 'finished' || raceState === 'gameover') && <Finished />}
       <PickColor />
       <HideMouse />
       <Keyboard />

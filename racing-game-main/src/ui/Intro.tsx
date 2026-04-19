@@ -4,17 +4,16 @@ import type { ReactNode } from 'react'
 import { useStore } from '../store'
 
 export function Intro({ children }: { children: ReactNode }): JSX.Element {
-  const [clicked, setClicked] = useState(false)
   const [loading, setLoading] = useState(true)
   const { progress } = useProgress()
   const set = useStore((s) => s.set)
+  const ready = useStore((s) => s.ready)
+  const raceState = useStore((s) => s.raceState)
   const hasEnteredName = useStore((s) => s.hasEnteredName)
   const setPlayerName = useStore((s) => s.actions.setPlayerName)
+  const startCountdown = useStore((s) => s.actions.startCountdown)
   const [nameInput, setNameInput] = useState('')
-
-  useEffect(() => {
-    if (clicked && !loading && hasEnteredName) set({ ready: true })
-  }, [clicked, loading, hasEnteredName])
+  const hidden = ready && raceState !== 'menu'
 
   useEffect(() => {
     if (progress === 100) setLoading(false)
@@ -26,9 +25,10 @@ export function Intro({ children }: { children: ReactNode }): JSX.Element {
       setPlayerName(nameInput.trim())
     }
     if (hasEnteredName || nameInput.trim()) {
-      setClicked(true)
+      set({ ready: true })
+      startCountdown()
     }
-  }, [loading, hasEnteredName, nameInput])
+  }, [loading, hasEnteredName, nameInput, set, setPlayerName, startCountdown])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleStart()
@@ -37,7 +37,7 @@ export function Intro({ children }: { children: ReactNode }): JSX.Element {
   return (
     <>
       <Suspense fallback={null}>{children}</Suspense>
-      <div className={`intro-screen ${loading ? 'loading' : 'loaded'} ${clicked && hasEnteredName ? 'clicked' : ''}`}>
+      <div className={`intro-screen ${loading ? 'loading' : 'loaded'} ${hidden ? 'clicked' : ''}`}>
         <div className="intro-content">
           <div className="intro-logo">
             <h1 className="intro-title">DESERT<span>CIRCUIT</span></h1>

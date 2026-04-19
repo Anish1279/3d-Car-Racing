@@ -495,6 +495,12 @@ body {
   margin-top: 6px;
 }
 
+.finished-reason {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
 .finished-stats {
   width: 100%;
   display: flex;
@@ -513,6 +519,7 @@ body {
 }
 
 .stat-row.total { border-color: var(--accent-cyan); background: rgba(0, 212, 255, 0.1); }
+.stat-row.score { border-color: var(--accent-amber); background: rgba(255, 170, 0, 0.08); }
 .stat-row.best { border-color: var(--accent-green); background: rgba(0, 255, 136, 0.05); }
 
 .stat-label {
@@ -530,6 +537,7 @@ body {
 }
 
 .stat-row.best .stat-value { color: var(--accent-green); }
+.stat-row.score .stat-value { color: var(--accent-amber); }
 
 .finished-laps {
   width: 100%;
@@ -588,6 +596,36 @@ body {
   background: rgba(0, 212, 255, 0.25);
   box-shadow: 0 0 25px rgba(0, 212, 255, 0.3);
   transform: translateY(-2px);
+}
+
+.finished-actions {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+}
+
+.menu-btn {
+  flex: 1;
+  font-family: var(--font-racing);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 2px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.menu-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.restart-btn {
+  flex: 1;
 }
 
 /* ─── COLOR PICKER ──────────────────────────────────────────── */

@@ -3,7 +3,7 @@ import { Vector3, Quaternion, MathUtils } from 'three'
 import { interactionGroups, useRapier, useBeforePhysicsStep } from '@react-three/rapier'
 import type { RapierRigidBody } from '@react-three/rapier'
 import { mutation, getState } from '../store'
-import { COLLISION_GROUP_CHASSIS, COLLISION_GROUP_ENVIRONMENT, VEHICLE_CONFIG } from './constants'
+import { COLLISION_GROUP_CHASSIS, COLLISION_GROUP_ENVIRONMENT, VEHICLE_CONFIG, VEHICLE_LOCAL_FORWARD, VEHICLE_LOCAL_RIGHT } from './constants'
 
 const { lerp, clamp } = MathUtils
 const RAYCAST_FILTER_GROUPS = interactionGroups(COLLISION_GROUP_CHASSIS, [COLLISION_GROUP_ENVIRONMENT])
@@ -31,13 +31,15 @@ const _brakeForce = new Vector3()
 const _totalForce = new Vector3()
 
 function getInputFromControls() {
-  const { controls } = getState()
-  const raceState = getState().raceState
-  const blocked = raceState === 'countdown'
+  const state = getState()
+  const { controls } = state
+  const blocked = state.raceState !== 'racing' || state.paused
 
   return {
     throttle: (!blocked && controls.forward) ? 1 : 0,
     reverse: (!blocked && controls.backward) ? 1 : 0,
+    // After normalizing the vehicle to +Z forward, the tire solver's yaw response
+    // expects positive steer for a left turn and negative steer for a right turn.
     steerInput: blocked ? 0 : (controls.left ? 1 : 0) - (controls.right ? 1 : 0),
     brake: (!blocked && controls.brake) ? 1 : 0,
     handbrake: !blocked && controls.brake,
@@ -65,8 +67,8 @@ export function useVehiclePhysics(chassisRef: React.RefObject<RapierRigidBody>) 
     _chassisPos.set(pos.x, pos.y, pos.z)
     _chassisQuat.set(rot.x, rot.y, rot.z, rot.w)
 
-    _chassisFwd.set(0, 0, -1).applyQuaternion(_chassisQuat)
-    _chassisRight.set(1, 0, 0).applyQuaternion(_chassisQuat)
+    _chassisFwd.set(...VEHICLE_LOCAL_FORWARD).applyQuaternion(_chassisQuat)
+    _chassisRight.set(...VEHICLE_LOCAL_RIGHT).applyQuaternion(_chassisQuat)
     _chassisUp.set(0, 1, 0).applyQuaternion(_chassisQuat)
 
     const linVel = rb.linvel()
@@ -147,11 +149,11 @@ export function useVehiclePhysics(chassisRef: React.RefObject<RapierRigidBody>) 
         _velAtWheel.addVectors(velocity, _crossResult)
 
         // Ground axes calculation
-        _groundRight.crossVectors(_chassisFwd, _normal).normalize()
+        _groundRight.crossVectors(_normal, _chassisFwd).normalize()
         // Safeguard against NaN if perfectly aligned
         if (_groundRight.lengthSq() < 0.01) _groundRight.copy(_chassisRight)
         
-        _groundFwd.crossVectors(_normal, _groundRight).normalize()
+        _groundFwd.crossVectors(_groundRight, _normal).normalize()
         
         if (wCfg.isSteer) {
           _steerQuat.setFromAxisAngle(_normal, currentSteer.current)

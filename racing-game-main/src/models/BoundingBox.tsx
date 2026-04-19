@@ -10,7 +10,7 @@ type Props = {
 }
 
 export const BoundingBox = ({ depth, height, position: [x, y, z], width }: Props) => {
-  const reset = useStore((s) => s.actions.reset)
+  const gameOver = useStore((s) => s.actions.gameOver)
   const halfDepth = depth / 2
   const halfHeight = height / 2
   const halfWidth = width / 2
@@ -35,7 +35,7 @@ export const BoundingBox = ({ depth, height, position: [x, y, z], width }: Props
           position={wall.pos}
           sensor
           collisionGroups={interactionGroups(COLLISION_GROUP_ENVIRONMENT, [COLLISION_GROUP_CHASSIS])}
-          onIntersectionEnter={() => reset()}
+          onIntersectionEnter={() => gameOver('Out of bounds')}
         >
           <CuboidCollider args={wall.size} sensor />
         </RigidBody>

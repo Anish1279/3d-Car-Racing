@@ -6,7 +6,7 @@ import { useGLTF } from '@react-three/drei'
 import type { RapierRigidBody } from '@react-three/rapier'
 import type { Group, Mesh, MeshStandardMaterial } from 'three'
 import type { GLTF } from 'three-stdlib'
-import { TRACK_WAYPOINTS, AI_CONFIG, COLLISION_GROUP_AI, COLLISION_GROUP_ENVIRONMENT, COLLISION_GROUP_CHASSIS } from '../physics/constants'
+import { TRACK_WAYPOINTS, AI_CONFIG, COLLISION_GROUP_AI, COLLISION_GROUP_ENVIRONMENT, COLLISION_GROUP_CHASSIS, VEHICLE_LOCAL_FORWARD, VEHICLE_LOCAL_RIGHT } from '../physics/constants'
 
 const _targetDir = new Vector3()
 const _fwd = new Vector3()
@@ -56,7 +56,7 @@ export function AIVehicle({ index, startOffset = 0 }: AIVehicleProps) {
     _quat.set(rot.x, rot.y, rot.z, rot.w)
 
     // Forward direction
-    _fwd.set(0, 0, -1).applyQuaternion(_quat)
+    _fwd.set(...VEHICLE_LOCAL_FORWARD).applyQuaternion(_quat)
 
     // Get target waypoint (look ahead)
     const wpIdx = currentWaypoint.current
@@ -76,7 +76,7 @@ export function AIVehicle({ index, startOffset = 0 }: AIVehicleProps) {
     }
 
     // Steering: calculate signed angle between forward and target
-    const cross = _fwd.x * _targetDir.z - _fwd.z * _targetDir.x
+    const cross = _fwd.z * _targetDir.x - _fwd.x * _targetDir.z
     const dot = _fwd.x * _targetDir.x + _fwd.z * _targetDir.z
     const angle = Math.atan2(cross, dot)
 
@@ -98,7 +98,7 @@ export function AIVehicle({ index, startOffset = 0 }: AIVehicleProps) {
     }
 
     // Apply lateral friction to prevent sliding
-    _right.set(1, 0, 0).applyQuaternion(_quat)
+    _right.set(...VEHICLE_LOCAL_RIGHT).applyQuaternion(_quat)
     const lateralVel = _right.dot(_planarVelocity)
     const lateralCorrection = _right.multiplyScalar(-lateralVel * 0.8 * dt * 60)
     rb.applyImpulse({ x: lateralCorrection.x, y: 0, z: lateralCorrection.z }, true)
